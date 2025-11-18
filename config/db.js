@@ -1,7 +1,48 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-// Check if mysql2 is installed
+// Get database dialect from environment
+// Auto-detect Supabase if DB_HOST contains 'supabase'
+let dbDialect = process.env.DB_DIALECT;
+if (!dbDialect && process.env.DB_HOST && process.env.DB_HOST.includes('supabase')) {
+  dbDialect = 'postgres';
+  console.log('🔍 Auto-detected Supabase (PostgreSQL) from DB_HOST');
+}
+// Default to postgres for Supabase (cloud database)
+if (!dbDialect) {
+  dbDialect = 'postgres';
+}
+
+// If PostgreSQL is requested, use postgres config
+if (dbDialect === 'postgres') {
+  try {
+    module.exports = require('./db-postgres');
+    return;
+  } catch (error) {
+    console.error('❌ Error loading PostgreSQL config:', error.message);
+    // Don't throw - create a dummy sequelize instance so models can load
+    // Connection will fail later, but at least Sequelize will be defined
+    const { Sequelize } = require('sequelize');
+    try {
+      const dummySequelize = new Sequelize('postgres', 'postgres', '', {
+        host: 'localhost',
+        dialect: 'postgres',
+        logging: false,
+        retry: { max: 0 }
+      });
+      const testConnection = async () => {
+        throw new Error('PostgreSQL config failed to load. Check environment variables.');
+      };
+      module.exports = { sequelize: dummySequelize, testConnection };
+      return;
+    } catch (dummyError) {
+      // If even dummy creation fails, fall through to MySQL config
+      console.warn('⚠️  Could not create dummy PostgreSQL instance, falling back to MySQL');
+    }
+  }
+}
+
+// Check if mysql2 is installed (for MySQL)
 try {
   require('mysql2');
 } catch (mysql2Error) {
@@ -108,7 +149,8 @@ if (process.env.VERCEL || process.env.RAILWAY_ENVIRONMENT || process.env.NODE_EN
 const sslConfig = {};
 const useSSL = process.env.DB_SSL !== 'false'; // Default to true unless explicitly disabled
 const isNgrok = dbHost?.includes('ngrok.io') || dbHost?.includes('ngrok-free.app');
-const isCloudDatabase = dbHost?.includes('.psdb.cloud') || dbHost?.includes('.rds.amazonaws.com') || dbHost?.includes('.railway.app');
+// PlanetScale and other cloud databases require SSL
+const isCloudDatabase = dbHost?.includes('.psdb.cloud') || dbHost?.includes('.rds.amazonaws.com') || dbHost?.includes('.railway.app') || dbHost?.includes('planetscale.com');
 
 if (isNgrok) {
   // ngrok tunnels don't support SSL for TCP connections
@@ -129,6 +171,8 @@ if (isNgrok) {
   console.log('🔒 SSL enabled for database connection (explicitly configured)');
 }
 
+// Always create sequelize instance, even with missing env vars
+// This ensures models can load (connection will fail later if vars are missing)
 const sequelize = new Sequelize(
   dbName || 'internet_billing_db',
   dbUser || 'root',
@@ -141,16 +185,16 @@ const sequelize = new Sequelize(
     dialectOptions: {
       ...sslConfig,
       // Additional connection options
-      // Reduce timeout for serverless - 15 seconds max (increased for slow connections)
-      connectTimeout: process.env.VERCEL ? 15000 : 30000,
+      // Reduce timeout for serverless - 10 seconds max for faster failure
+      connectTimeout: process.env.VERCEL ? 10000 : 30000,
       // Support for timezone
       timezone: '+00:00',
     },
     pool: {
       max: process.env.VERCEL ? 1 : 5, // Single connection for serverless
       min: 0,
-      // Reduce acquire timeout for serverless - 15 seconds max (increased for slow connections)
-      acquire: process.env.VERCEL ? 15000 : 30000,
+      // Reduce acquire timeout for serverless - 10 seconds max for faster failure
+      acquire: process.env.VERCEL ? 10000 : 30000,
       idle: process.env.VERCEL ? 5000 : 10000 // Shorter idle for serverless
     },
     // Add connection retry for serverless
@@ -310,6 +354,24 @@ const testConnection = async (retries = process.env.VERCEL ? 1 : 2) => {
     throw error; // Re-throw in production (non-serverless)
   }
 };
+
+// Ensure sequelize is always defined before exporting
+if (!sequelize) {
+  console.error('❌ CRITICAL: Sequelize instance is undefined! Creating fallback instance.');
+  try {
+    sequelize = new Sequelize({
+      dialect: 'mysql',
+      logging: false
+    });
+  } catch (finalError) {
+    // Absolute last resort
+    const { Sequelize: SequelizeClass } = require('sequelize');
+    sequelize = new SequelizeClass({
+      dialect: 'mysql',
+      logging: false
+    });
+  }
+}
 
 module.exports = { sequelize, testConnection };
 

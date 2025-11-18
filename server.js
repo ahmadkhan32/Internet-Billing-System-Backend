@@ -175,6 +175,48 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Health check endpoint - simple status check
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbStatus = await testConnection();
+    res.json({
+      status: 'ok',
+      database: dbStatus ? 'connected' : 'disconnected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    // Provide detailed error information
+    const missingVars = [];
+    const requiredVars = ['DB_HOST', 'DB_USER', 'DB_NAME', 'DB_PASSWORD'];
+    requiredVars.forEach(v => {
+      if (!process.env[v] || process.env[v].trim() === '') {
+        missingVars.push(v);
+      }
+    });
+    
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      error: error.message,
+      missingVariables: missingVars.length > 0 ? missingVars : undefined,
+      troubleshooting: {
+        steps: [
+          '1. Check environment variables in Vercel Settings → Environment Variables',
+          '2. Verify Supabase project is active (not paused)',
+          '3. Check database credentials are correct',
+          '4. Ensure DB_SSL=true is set for Supabase',
+          '5. Redeploy after setting environment variables'
+        ],
+        guides: [
+          'See FIX_DATABASE_CONNECTION_NOW.md for quick fix',
+          'See DATABASE_CONNECTION_TROUBLESHOOTING.md for detailed help'
+        ]
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Diagnostic endpoint - provides detailed connection information
 app.get('/api/diagnose', async (req, res) => {
   const diagnostics = {
@@ -643,4 +685,4 @@ if (!isVercel) {
 }
 
 // Export app for serverless functions
-module.exports = app;;
+module.exports = app;

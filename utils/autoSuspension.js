@@ -9,6 +9,21 @@ const moment = require('moment');
 const sendEmail = require('./sendEmail');
 const sendSMS = require('./smsService');
 const createActivityLog = require('./activityLogger');
+const { sequelize } = require('../config/db');
+
+/**
+ * Check if database connection is available
+ * @returns {Promise<boolean>} True if connection is available
+ */
+const checkDatabaseConnection = async () => {
+  try {
+    await sequelize.authenticate();
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection check failed:', error.message);
+    return false;
+  }
+};
 
 /**
  * Auto-suspend customers with overdue bills
@@ -25,6 +40,19 @@ const autoSuspendCustomers = async (options = {}) => {
     } = options;
 
     console.log('🚫 Starting auto-suspension process...');
+
+    // Check database connection before proceeding
+    const isConnected = await checkDatabaseConnection();
+    if (!isConnected) {
+      console.error('❌ Cannot proceed with auto-suspension: Database connection unavailable');
+      return {
+        success: false,
+        error: 'Database connection unavailable',
+        suspended: 0,
+        alreadySuspended: 0,
+        details: []
+      };
+    }
 
     const suspensionDate = moment().subtract(gracePeriodDays, 'days').toDate();
 
@@ -176,8 +204,34 @@ const autoSuspendCustomers = async (options = {}) => {
       details: suspensionDetails
     };
   } catch (error) {
-    console.error('❌ Error in autoSuspendCustomers:', error);
-    throw error;
+    console.error('❌ Error in autoSuspendCustomers:', error.message || error);
+    
+    // Check if it's a connection error
+    if (error.name === 'SequelizeConnectionRefusedError' || 
+        error.name === 'SequelizeConnectionError' ||
+        error.code === 'ECONNREFUSED' ||
+        error.original?.code === 'ECONNREFUSED') {
+      console.error('💡 Database connection refused. Please check:');
+      console.error('   1. MySQL server is running');
+      console.error('   2. Database credentials in .env file are correct');
+      console.error('   3. Database host and port are accessible');
+      return {
+        success: false,
+        error: 'Database connection refused',
+        suspended: 0,
+        alreadySuspended: 0,
+        details: []
+      };
+    }
+    
+    // For other errors, return failure but don't throw
+    return {
+      success: false,
+      error: error.message || 'Unknown error',
+      suspended: 0,
+      alreadySuspended: 0,
+      details: []
+    };
   }
 };
 

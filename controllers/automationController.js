@@ -270,6 +270,15 @@ const triggerAutoSuspension = async (req, res) => {
       sendNotification: true
     });
 
+    // Check if the operation was successful
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: result.error || 'Auto-suspension failed',
+        result
+      });
+    }
+
     res.json({
       success: true,
       message: `Auto-suspension completed. Suspended: ${result.suspended}, Already suspended: ${result.alreadySuspended}`,
@@ -278,6 +287,7 @@ const triggerAutoSuspension = async (req, res) => {
   } catch (error) {
     console.error('Auto-suspension error:', error);
     res.status(500).json({ 
+      success: false,
       message: 'Server error', 
       error: error.message 
     });

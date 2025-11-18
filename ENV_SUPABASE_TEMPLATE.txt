@@ -1,0 +1,39 @@
+# Supabase Environment Variables Template
+# Copy these to your .env file or Vercel Environment Variables
+
+# Database Configuration for Supabase
+DB_DIALECT=postgres
+DB_HOST=db.xxxxx.supabase.co
+DB_PORT=5432
+# For connection pooling, use port 6543:
+# DB_PORT=6543
+
+DB_USER=postgres
+DB_PASSWORD=your-supabase-password
+DB_NAME=postgres
+
+# SSL Configuration (Required for Supabase)
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=false
+
+# Server Configuration
+NODE_ENV=production
+PORT=8000
+
+# JWT Configuration
+# Generate secret: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+JWT_SECRET=your-generated-jwt-secret-32-characters-minimum
+JWT_EXPIRE=7d
+
+# Frontend URL
+FRONTEND_URL=https://your-app.vercel.app
+
+# Optional: Email Configuration
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+
+# Optional: Stripe Configuration
+STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
+

@@ -442,8 +442,16 @@ const initializeScheduler = () => {
   // Auto-suspend customers with overdue bills daily at 11:00 AM
   cron.schedule('0 11 * * *', async () => {
     console.log('📅 Scheduled: Auto-suspend customers');
-    const autoSuspension = require('./autoSuspension');
-    await autoSuspension.autoSuspendCustomers({ gracePeriodDays: 7 });
+    try {
+      const autoSuspension = require('./autoSuspension');
+      const result = await autoSuspension.autoSuspendCustomers({ gracePeriodDays: 7 });
+      if (!result.success) {
+        console.error('❌ Auto-suspension failed:', result.error || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('❌ Error in scheduled auto-suspension:', error.message);
+      // Don't throw - allow cron to continue for next scheduled run
+    }
   }, {
     scheduled: true,
     timezone: 'UTC'

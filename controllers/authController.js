@@ -102,11 +102,56 @@ const login = async (req, res) => {
       await sequelize.authenticate();
     } catch (connError) {
       console.error('❌ Database connection failed before query:', connError.message);
+      console.error('📋 Connection Details:', {
+        hasDB_HOST: !!process.env.DB_HOST,
+        hasDB_USER: !!process.env.DB_USER,
+        hasDB_PASSWORD: !!process.env.DB_PASSWORD,
+        hasDB_NAME: !!process.env.DB_NAME,
+        DB_DIALECT: process.env.DB_DIALECT || 'mysql',
+        VERCEL: !!process.env.VERCEL
+      });
+      
+      // Check for missing environment variables
+      const missingVars = [];
+      if (!process.env.DB_HOST || process.env.DB_HOST.trim() === '') missingVars.push('DB_HOST');
+      if (!process.env.DB_USER || process.env.DB_USER.trim() === '') missingVars.push('DB_USER');
+      if (!process.env.DB_PASSWORD || process.env.DB_PASSWORD.trim() === '') missingVars.push('DB_PASSWORD');
+      if (!process.env.DB_NAME || process.env.DB_NAME.trim() === '') missingVars.push('DB_NAME');
+      
+      let errorMessage = 'Database connection failed. Please check your database configuration.';
+      let troubleshooting = [];
+      
+      if (missingVars.length > 0) {
+        errorMessage = `Missing environment variables: ${missingVars.join(', ')}. Please set these in Vercel project settings.`;
+        troubleshooting.push('Go to Vercel Dashboard → Settings → Environment Variables');
+        troubleshooting.push('Add all required database variables');
+        troubleshooting.push('Redeploy after adding variables');
+      } else {
+        troubleshooting.push('Verify database credentials are correct in Vercel environment variables');
+        troubleshooting.push('Check database is accessible from internet (not private network)');
+        troubleshooting.push('For Supabase: Verify project is active (not paused) and credentials are correct');
+        troubleshooting.push('Check database firewall allows connections from 0.0.0.0/0');
+        troubleshooting.push('Verify database is running and not paused');
+        
+        // Add specific hints based on error
+        if (connError.message.includes('ECONNREFUSED') || connError.message.includes('timeout')) {
+          troubleshooting.push('Network issue: Database host might be unreachable or firewall blocking');
+        }
+        if (connError.message.includes('Access denied') || connError.message.includes('password')) {
+          troubleshooting.push('Authentication failed: Check DB_USER and DB_PASSWORD are correct');
+        }
+        if (connError.message.includes('Unknown database')) {
+          troubleshooting.push('Database does not exist: Verify DB_NAME is correct');
+        }
+      }
+      
       return res.status(503).json({
         success: false,
-        message: 'Database connection failed. Please check your database configuration.',
-        error: connError.message,
-        hint: 'Check environment variables: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME'
+        message: errorMessage,
+        error: process.env.VERCEL ? connError.message : undefined,
+        missingVariables: missingVars.length > 0 ? missingVars : undefined,
+        troubleshooting: troubleshooting,
+        hint: 'See VERCEL_DEPLOYMENT_READY.md for detailed setup instructions'
       });
     }
 
