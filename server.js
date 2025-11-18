@@ -345,9 +345,33 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json(errorResponse);
 });
 
+// Root route handler
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Internet Billing System API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      diagnose: '/api/diagnose',
+      auth: '/api/auth',
+      docs: 'API endpoints are available under /api/*'
+    },
+    note: 'This is the backend API. Frontend should be accessed separately.'
+  });
+});
+
 // 404 handler for API routes
 app.use('/api', (req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ message: 'API route not found' });
+});
+
+// 404 handler for all other routes
+app.use((req, res) => {
+  res.status(404).json({ 
+    message: 'Route not found',
+    hint: 'API endpoints are available under /api/*. Example: /api/health'
+  });
 });
 
 // Serve frontend static files in production (for Railway deployment)
