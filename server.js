@@ -483,10 +483,24 @@ const startServer = async () => {
       try {
         const connected = await testConnection();
         if (!connected) {
-          console.warn('⚠️  Database connection failed during startup (local development)');
-          console.warn('💡 Server will start but database operations will fail');
-          console.warn('💡 Check your .env file and ensure database is running');
-          console.warn('💡 For Supabase: Verify DB_HOST, DB_USER, DB_PASSWORD, DB_NAME are set');
+          console.warn('');
+          console.warn('⚠️  ⚠️  ⚠️  DATABASE CONNECTION FAILED ⚠️  ⚠️  ⚠️');
+          console.warn('');
+          console.warn('🔴 All database operations will fail until this is fixed!');
+          console.warn('');
+          console.warn('💡 Most Common Issue: Supabase project is PAUSED');
+          console.warn('');
+          console.warn('✅ QUICK FIX:');
+          console.warn('   1. Go to: https://supabase.com/dashboard');
+          console.warn('   2. Click your project');
+          console.warn('   3. Click "Restore" (even if it shows "Active")');
+          console.warn('   4. Wait 3-5 minutes');
+          console.warn('   5. Restart server: npm start');
+          console.warn('');
+          console.warn('💡 Or run: npm run pre-start (checks database before starting)');
+          console.warn('');
+          console.warn('⚠️  Server will start but database operations will fail');
+          console.warn('');
         }
       } catch (dbError) {
         console.warn('⚠️  Database connection failed during startup (local development)');
