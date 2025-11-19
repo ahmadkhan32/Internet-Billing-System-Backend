@@ -37,9 +37,19 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
+// Default localhost origins for development
+const defaultLocalhostOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002'
+];
+
 const allowedOrigins = process.env.FRONTEND_URL 
-  ? [process.env.FRONTEND_URL] 
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
+  ? [process.env.FRONTEND_URL, ...defaultLocalhostOrigins]
+  : defaultLocalhostOrigins;
 
 // Add Vercel URL to allowed origins if in Vercel environment
 if (process.env.VERCEL_URL) {
@@ -50,10 +60,27 @@ if (process.env.VERCEL) {
   allowedOrigins.push(/^https:\/\/.*\.vercel\.app$/);
 }
 
+// Enhanced CORS configuration for Vercel
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
+    
+    // In development, always allow localhost
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log('✅ CORS: Allowing localhost origin:', origin);
+        return callback(null, true);
+      }
+    }
+    
+    // In Vercel environment, allow all Vercel URLs (preview and production)
+    if (process.env.VERCEL) {
+      // Allow any Vercel domain
+      if (origin.includes('.vercel.app')) {
+        return callback(null, true);
+      }
+    }
     
     // Check if origin matches allowed origins
     const isAllowed = allowedOrigins.some(allowed => {
@@ -70,13 +97,20 @@ app.use(cors({
     } else {
       // In development or Vercel, allow all origins
       if (process.env.NODE_ENV !== 'production' || process.env.VERCEL) {
+        console.log('✅ CORS: Allowing origin (development/Vercel):', origin);
         callback(null, true);
       } else {
+        console.warn('⚠️  CORS: Origin not allowed:', origin);
         callback(new Error('Not allowed by CORS'));
       }
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -124,6 +158,9 @@ if (process.env.VERCEL) {
   });
 }
 
+// Handle preflight OPTIONS requests explicitly
+app.options('*', cors());
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -170,7 +207,14 @@ app.get('/api/health', async (req, res) => {
       message: 'Server is running but database connection failed',
       database: 'disconnected',
       error: isDev ? error.message : 'Database connection error',
-      hint: 'Check environment variables: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME'
+      hint: 'Check environment variables: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME',
+      troubleshooting: [
+        'Verify database credentials are correct in Vercel environment variables',
+        'Check database is accessible from internet (not private network)',
+        'For Supabase: Verify project is active (not paused) and credentials are correct',
+        'Check database firewall allows connections from 0.0.0.0/0',
+        'Verify database is running and not paused'
+      ]
     });
   }
 });
@@ -293,10 +337,20 @@ app.get('/api/diagnose', async (req, res) => {
         issue: 'SSL/TLS connection issue',
         fix: 'SSL is automatically enabled for cloud databases. Verify your database supports SSL connections.'
       });
+    } else if (error.message && (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo'))) {
+      diagnostics.recommendations.push({
+        priority: 'CRITICAL',
+        issue: 'DNS lookup failed - Cannot resolve database hostname (ENOTFOUND)',
+        errorDetails: error.message,
+        likelyCause: 'Supabase project is paused or hostname is incorrect',
+        fix: '1. Go to Supabase Dashboard (supabase.com/dashboard), 2. Check if project is paused and click "Restore", 3. Verify DB_HOST is correct (db.xxxxx.supabase.co), 4. Get fresh credentials from Supabase Dashboard if needed',
+        guide: 'See FIX_SUPABASE_ENOTFOUND_ERROR.md for detailed steps'
+      });
     } else if (missingVars.length === 0) {
       diagnostics.recommendations.push({
         priority: 'HIGH',
         issue: 'Database connection failed despite all variables being set',
+        errorDetails: error.message || 'Unknown error',
         fix: '1. Check database firewall allows 0.0.0.0/0, 2. Verify database is running, 3. Test connection locally, 4. Check Vercel function logs for details'
       });
     }
@@ -363,15 +417,41 @@ app.get('/', (req, res) => {
 
 // 404 handler for API routes
 app.use('/api', (req, res) => {
-  res.status(404).json({ message: 'API route not found' });
+  res.status(404).json({ 
+    message: 'API route not found',
+    path: req.path,
+    method: req.method,
+    hint: 'Available API endpoints: /api/health, /api/auth/login, /api/auth/register, etc.',
+    availableRoutes: [
+      '/api/health',
+      '/api/auth/login',
+      '/api/auth/register',
+      '/api/auth/me',
+      '/api/customers',
+      '/api/billing',
+      '/api/payments'
+    ]
+  });
 });
 
-// 404 handler for all other routes
+// 404 handler for all other routes (non-API)
 app.use((req, res) => {
-  res.status(404).json({ 
-    message: 'Route not found',
-    hint: 'API endpoints are available under /api/*. Example: /api/health'
-  });
+  // Don't return 404 for frontend routes - let Vercel handle them
+  if (process.env.VERCEL && !req.path.startsWith('/api')) {
+    // In Vercel, frontend routes should be handled by rewrites
+    // Return a helpful message instead of 404
+    res.status(200).json({ 
+      message: 'Internet Billing System API',
+      note: 'This is a frontend route. The frontend should handle this route.',
+      apiEndpoint: '/api/health'
+    });
+  } else {
+    res.status(404).json({ 
+      message: 'Route not found',
+      path: req.path,
+      hint: 'API endpoints are available under /api/*. Example: /api/health'
+    });
+  }
 });
 
 // Serve frontend static files in production (for Railway deployment)
@@ -388,7 +468,11 @@ if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
 
 // Export app for serverless functions (Vercel)
 // Only start server if not in serverless mode
-const isVercel = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+// Check if VERCEL is explicitly set to "1" or "true", not just any value
+// Also check if we're actually running in Vercel environment (not localhost)
+const isVercel = (process.env.VERCEL === '1' || process.env.VERCEL === 'true') || 
+                 (process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+                 (process.env.VERCEL_URL && !process.env.VERCEL_URL.includes('localhost'));
 
 // Sync database and start server
 const startServer = async () => {
@@ -397,11 +481,19 @@ const startServer = async () => {
     // In local dev, allow server to start even if DB is not available
     if (!isVercel) {
       try {
-        await testConnection();
+        const connected = await testConnection();
+        if (!connected) {
+          console.warn('⚠️  Database connection failed during startup (local development)');
+          console.warn('💡 Server will start but database operations will fail');
+          console.warn('💡 Check your .env file and ensure database is running');
+          console.warn('💡 For Supabase: Verify DB_HOST, DB_USER, DB_PASSWORD, DB_NAME are set');
+        }
       } catch (dbError) {
         console.warn('⚠️  Database connection failed during startup (local development)');
         console.warn('💡 Server will start but database operations will fail');
-        console.warn('💡 Make sure MySQL is running and .env file is configured');
+        console.warn('💡 Error:', dbError.message);
+        console.warn('💡 Check your .env file and ensure database is accessible');
+        console.warn('💡 For Supabase: Verify connection credentials in .env file');
         // Don't crash in local dev - allow server to start
       }
     } else {
@@ -668,11 +760,31 @@ const startServer = async () => {
     // Start server only if not in serverless mode
     if (!isVercel) {
       const port = process.env.PORT || PORT;
-      app.listen(port, '0.0.0.0', () => {
+      
+      // Check if port is already in use
+      const server = app.listen(port, '0.0.0.0', () => {
         console.log(`🚀 Server running on port ${port}`);
         console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
         if (process.env.NODE_ENV === 'production') {
           console.log(`🌐 Frontend served from: ${path.join(__dirname, '../frontend/dist')}`);
+        }
+      });
+      
+      // Handle port already in use error
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`❌ Port ${port} is already in use!`);
+          console.error('💡 Solutions:');
+          console.error(`   1. Kill the process using port ${port}:`);
+          console.error(`      Windows: npm run kill-port`);
+          console.error(`      Or: netstat -ano | findstr :${port}`);
+          console.error(`      Then: taskkill /PID <PID> /F`);
+          console.error(`   2. Use a different port: PORT=8001 npm start`);
+          console.error(`   3. Find and stop the other server process`);
+          process.exit(1);
+        } else {
+          console.error('❌ Server error:', err);
+          process.exit(1);
         }
       });
     } else {

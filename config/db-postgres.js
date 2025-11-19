@@ -190,11 +190,20 @@ const testConnection = async (retries = 2) => {
         console.error('   - Check Supabase connection string includes SSL parameters');
       }
       
-      if (error.message.includes('ECONNREFUSED') || error.message.includes('timeout')) {
-        console.error('\n   🌐 Network/Firewall Issues:');
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('timeout') || error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
+        console.error('\n   🌐 Network/DNS Issues:');
+        console.error('   - ERROR: Cannot resolve database hostname (ENOTFOUND)');
+        console.error('   - This usually means:');
+        console.error('     1. ❌ Supabase project is PAUSED (free tier auto-pauses after inactivity)');
+        console.error('     2. ❌ Database hostname is incorrect');
+        console.error('     3. ❌ Supabase project was deleted');
+        console.error('   - Solutions:');
+        console.error('     1. ✅ Go to Supabase Dashboard → Your Project');
+        console.error('     2. ✅ Click "Restore" or "Resume" if project is paused');
+        console.error('     3. ✅ Verify DB_HOST is correct: db.xxxxx.supabase.co');
+        console.error('     4. ✅ Get fresh connection string from Supabase Dashboard');
+        console.error('     5. ✅ Check Supabase project status (Settings → General)');
         console.error('   - Supabase allows connections from anywhere by default');
-        console.error('   - Verify database host is correct (db.xxxxx.supabase.co)');
-        console.error('   - Check if Supabase project is paused (free tier)');
         console.error('   - Try using connection pooling port 6543');
       }
       

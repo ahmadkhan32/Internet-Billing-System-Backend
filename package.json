@@ -10,11 +10,13 @@
     "migrate": "node utils/runMigration.js",
     "migrate-to-supabase": "node migrate-to-supabase.js",
     "migrate-xampp": "node migrate-xampp-to-supabase.js",
-    "test-db": "node test-db-connection.js",
+    "test-db": "node test-supabase-connection.js",
+    "check-supabase": "powershell -ExecutionPolicy Bypass -File check-supabase-status.ps1",
     "kill-port": "powershell -ExecutionPolicy Bypass -File kill-port.ps1 8000",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "fix:rbac": "node utils/fixRolePermissionsTable.js"
+    "fix:rbac": "node utils/fixRolePermissionsTable.js",
+    "setup-supabase": "powershell -ExecutionPolicy Bypass -File get-supabase-credentials.ps1"
   },
   "keywords": [
     "billing",
